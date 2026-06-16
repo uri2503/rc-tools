@@ -59,24 +59,29 @@
   .btn-deploy:hover { background: #a93226; }
   .btn-deploy:disabled { background: #444; cursor: not-allowed; }
 
-  /* Log */
   .log { background: #0a0a0a; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: monospace; font-size: 12px; line-height: 1.8; display: none; max-height: 240px; overflow-y: auto; }
   .log.visible { display: block; }
   .log-line { display: flex; gap: 8px; }
   .log-time { color: var(--muted); flex-shrink: 0; }
-  .log-msg { }
   .log-ok { color: var(--green); }
   .log-err { color: #ff6b6b; }
   .log-info { color: var(--gold); }
 
-  /* Success */
   .success-box { background: #001a00; border: 1px solid var(--green); border-left: 3px solid var(--green); border-radius: 5px; padding: 16px; display: none; }
   .success-box.visible { display: block; }
   .success-title { font-weight: 700; color: var(--green); margin-bottom: 4px; }
   .success-url { font-size: 12px; color: var(--muted); }
   .success-url a { color: var(--gold); text-decoration: none; }
 
-  /* Saved repos */
+  /* Dashboard Banner */
+  .dash-banner { background:#0d1f0d; border:1px solid #2a5a2a; border-left:3px solid var(--green); border-radius:6px; padding:12px 14px; margin-bottom:16px; display:none; }
+  .dash-banner.visible { display:flex; align-items:center; gap:10px; }
+  .dash-banner-icon { font-size:18px; flex-shrink:0; }
+  .dash-banner-text { font-size:12px; line-height:1.5; }
+  .dash-banner-text strong { color: var(--green); }
+  .dash-back { margin-left:auto; font-size:11px; color:var(--muted); text-decoration:none; flex-shrink:0; }
+  .dash-back:hover { color:var(--green); }
+
   .saved-repos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .repo-chip {
     background: var(--surface2); border: 1px solid var(--border);
@@ -84,6 +89,7 @@
     cursor: pointer; transition: border-color 0.2s; color: var(--muted);
   }
   .repo-chip:hover { border-color: var(--red); color: var(--text); }
+  .repo-chip.active { border-color: var(--green); color: var(--green); }
 
   .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 </style>
@@ -99,6 +105,16 @@
 </header>
 
 <div class="container">
+
+  <!-- Dashboard Banner (sichtbar wenn via URL-Parameter aufgerufen) -->
+  <div class="dash-banner" id="dashBanner">
+    <div class="dash-banner-icon">🔗</div>
+    <div class="dash-banner-text">
+      Aus <strong>RC Dashboard</strong>:<br>
+      Projekt <strong id="bannerName"></strong> → Repo <strong id="bannerRepo"></strong> vorausgefüllt
+    </div>
+    <a class="dash-back" href="https://uri2503.github.io/rc-dashboard/" target="_blank">← Dashboard</a>
+  </div>
 
   <!-- Token -->
   <div class="card">
@@ -120,7 +136,7 @@
 
     <div class="field">
       <label>Repository</label>
-      <input type="text" id="repo" placeholder="rc_klassiker" value="rc_klassiker" />
+      <input type="text" id="repo" placeholder="rc_klassiker" />
       <div class="saved-repos" id="savedRepos"></div>
     </div>
 
@@ -167,15 +183,12 @@
 <script>
 var fileContent = null;
 var fileName    = null;
-
-// Repos dynamisch von GitHub laden
-var knownRepos = [];
+var knownRepos  = [];
 
 function loadRepos() {
   var token  = document.getElementById('token').value.trim();
   var ghuser = document.getElementById('ghuser').value.trim();
   if (!token || !ghuser) return;
-
   fetch('https://api.github.com/users/' + ghuser + '/repos?per_page=100&sort=full_name&direction=asc', {
     headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
   })
@@ -188,29 +201,44 @@ function loadRepos() {
   .catch(function() {});
 }
 
-// Gespeicherte Werte laden
 window.onload = function() {
+  // Gespeicherte Werte
   var t = localStorage.getItem('rc_gh_token');
   var u = localStorage.getItem('rc_gh_user');
   if (t) document.getElementById('token').value  = t;
   if (u) document.getElementById('ghuser').value = u;
-  // Repos sofort laden wenn Token vorhanden
+
+  // ── URL-Parameter vom RC Dashboard ──────────────────────────────
+  var params = new URLSearchParams(window.location.search);
+  var pRepo  = params.get('repo');
+  var pName  = params.get('name');
+  if (pRepo) {
+    document.getElementById('repo').value = pRepo;
+    // Banner einblenden
+    document.getElementById('bannerName').textContent = pName || pRepo;
+    document.getElementById('bannerRepo').textContent = pRepo;
+    document.getElementById('dashBanner').classList.add('visible');
+  }
+  // ────────────────────────────────────────────────────────────────
+
   if (t && u) loadRepos();
-  // Bei Token/User Änderung neu laden
   document.getElementById('token').addEventListener('blur', loadRepos);
   document.getElementById('ghuser').addEventListener('blur', loadRepos);
 };
 
 function renderRepoChips() {
+  var currentRepo = document.getElementById('repo').value.trim();
   var el = document.getElementById('savedRepos');
   el.innerHTML = '';
   knownRepos.forEach(function(r) {
-    el.innerHTML += '<span class="repo-chip" onclick="setRepo(\'' + r + '\')">' + r + '</span>';
+    var active = r === currentRepo ? ' active' : '';
+    el.innerHTML += '<span class="repo-chip' + active + '" onclick="setRepo(\'' + r + '\')">' + r + '</span>';
   });
 }
 
 function setRepo(r) {
   document.getElementById('repo').value = r;
+  renderRepoChips();
 }
 
 function toggleToken() {
@@ -224,7 +252,6 @@ function fileSelected(input) {
   fileName = file.name;
   document.getElementById('fileName').textContent = '✓ ' + file.name + ' (' + Math.round(file.size/1024) + ' KB)';
   document.getElementById('dropZone').classList.add('has-file');
-
   var reader = new FileReader();
   reader.onload = function(e) {
     fileContent = e.target.result;
@@ -255,7 +282,6 @@ function deploy() {
   if (!repo)        { alert('Bitte Repository eingeben.'); return; }
   if (!fileContent) { alert('Bitte zuerst eine Datei auswählen.'); return; }
 
-  // Speichern für nächstes Mal
   localStorage.setItem('rc_gh_token', token);
   localStorage.setItem('rc_gh_user', ghuser);
 
@@ -274,40 +300,21 @@ function deploy() {
   log('Verbinde mit GitHub API…', 'info');
   log('Repo: ' + ghuser + '/' + repo + ' → ' + target, 'info');
 
-  // Schritt 1: Aktuellen SHA holen
   fetch(apiUrl + '?ref=' + branch, { headers: headers })
   .then(function(r) {
-    if (r.status === 404) return null; // Datei neu
+    if (r.status === 404) return null;
     if (!r.ok) throw new Error('GitHub API Fehler: ' + r.status);
     return r.json();
   })
   .then(function(existing) {
     var sha = existing ? existing.sha : null;
-    if (sha) {
-      log('Bestehende Datei gefunden — wird aktualisiert.', 'info');
-    } else {
-      log('Neue Datei wird erstellt.', 'info');
-    }
-
-    // Base64 kodieren
+    log(sha ? 'Bestehende Datei — wird aktualisiert.' : 'Neue Datei wird erstellt.', 'info');
     var b64 = btoa(unescape(encodeURIComponent(fileContent)));
-
-    var now = new Date();
-    var ts  = now.toISOString().substring(0,16).replace('T',' ');
-    var payload = {
-      message: 'Deploy ' + target + ' — ' + ts,
-      content: b64,
-      branch:  branch
-    };
+    var ts  = new Date().toISOString().substring(0,16).replace('T',' ');
+    var payload = { message: 'Deploy ' + target + ' — ' + ts, content: b64, branch: branch };
     if (sha) payload.sha = sha;
-
     log('Lade ' + target + ' hoch…', 'info');
-
-    return fetch(apiUrl, {
-      method:  'PUT',
-      headers: headers,
-      body:    JSON.stringify(payload)
-    });
+    return fetch(apiUrl, { method: 'PUT', headers: headers, body: JSON.stringify(payload) });
   })
   .then(function(r) {
     if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || 'Deploy fehlgeschlagen'); });
@@ -317,17 +324,11 @@ function deploy() {
     var commitUrl = data.commit ? data.commit.html_url : '';
     log('✅ Deploy erfolgreich!', 'ok');
     if (commitUrl) log('Commit: ' + commitUrl, 'ok');
-
     var pageUrl = 'https://' + ghuser + '.github.io/' + repo + '/';
-    document.getElementById('successUrl').innerHTML =
-      '🌐 <a href="' + pageUrl + '" target="_blank">' + pageUrl + '</a>';
+    document.getElementById('successUrl').innerHTML = '🌐 <a href="' + pageUrl + '" target="_blank">' + pageUrl + '</a>';
     document.getElementById('successBox').classList.add('visible');
-
     btn.textContent = '✅ Deployed!';
-    setTimeout(function() {
-      btn.textContent = '🚀 Zu GitHub deployen';
-      btn.disabled = false;
-    }, 3000);
+    setTimeout(function() { btn.textContent = '🚀 Zu GitHub deployen'; btn.disabled = false; }, 3000);
   })
   .catch(function(err) {
     log('❌ Fehler: ' + err.message, 'err');

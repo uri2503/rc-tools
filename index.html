@@ -176,7 +176,7 @@ function loadRepos() {
   var ghuser = document.getElementById('ghuser').value.trim();
   if (!token || !ghuser) return;
 
-  fetch('https://api.github.com/users/' + ghuser + '/repos?per_page=100&sort=updated', {
+  fetch('https://api.github.com/users/' + ghuser + '/repos?per_page=100&sort=full_name&direction=asc', {
     headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
   })
   .then(function(r) { return r.json(); })

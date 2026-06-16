@@ -168,16 +168,37 @@
 var fileContent = null;
 var fileName    = null;
 
-// Bekannte Repos für Schnellauswahl
-var knownRepos = ['rc_klassiker', 'autoguide-ai', 'RC-Restore', 'RC_unfallkalkulation_demo', 'Riedel-Kasko', 'AutoAITools-'];
+// Repos dynamisch von GitHub laden
+var knownRepos = [];
+
+function loadRepos() {
+  var token  = document.getElementById('token').value.trim();
+  var ghuser = document.getElementById('ghuser').value.trim();
+  if (!token || !ghuser) return;
+
+  fetch('https://api.github.com/users/' + ghuser + '/repos?per_page=100&sort=updated', {
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(repos) {
+    if (!Array.isArray(repos)) return;
+    knownRepos = repos.map(function(r) { return r.name; });
+    renderRepoChips();
+  })
+  .catch(function() {});
+}
 
 // Gespeicherte Werte laden
 window.onload = function() {
   var t = localStorage.getItem('rc_gh_token');
   var u = localStorage.getItem('rc_gh_user');
-  if (t) document.getElementById('token').value   = t;
-  if (u) document.getElementById('ghuser').value  = u;
-  renderRepoChips();
+  if (t) document.getElementById('token').value  = t;
+  if (u) document.getElementById('ghuser').value = u;
+  // Repos sofort laden wenn Token vorhanden
+  if (t && u) loadRepos();
+  // Bei Token/User Änderung neu laden
+  document.getElementById('token').addEventListener('blur', loadRepos);
+  document.getElementById('ghuser').addEventListener('blur', loadRepos);
 };
 
 function renderRepoChips() {

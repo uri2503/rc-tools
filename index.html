@@ -261,13 +261,17 @@ header{background:#141414;border-bottom:1px solid #2a2a2a;padding:14px 20px;disp
     <div class="mbody">
       <div class="frow"><label>Titel</label><input id="logTitle" type="text" placeholder="z.B. Stripe-Integration + Architektur-Refactor"></div>
       <div class="frow"><label>Datum</label><input id="logDate" type="date"></div>
-      <div class="frow"><label>Inhalt <span style="color:#555;font-size:10px;text-transform:none">(Markdown wird unterstützt: # Überschrift, **fett**, - Liste)</span></label>
-        <textarea id="logContent" rows="14" placeholder="Zusammenfassung hier einfügen…" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+      <div class="frow"><label>Datei <span style="color:#555;font-size:10px;text-transform:none">(PDF, Word, Text – optional, max. 25 MB)</span></label>
+        <input id="logFile" type="file" accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" onchange="onLogFileChange()">
+        <div id="logFileInfo" style="font-size:11px;color:#666;margin-top:6px"></div>
+      </div>
+      <div class="frow"><label>Zusammenfassung <span style="color:#555;font-size:10px;text-transform:none">(Markdown wird unterstützt: # Überschrift, **fett**, - Liste)</span></label>
+        <textarea id="logContent" rows="12" placeholder="Zusammenfassung hier einfügen…" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
       </div>
     </div>
     <div class="mfoot">
       <button class="btn btn-gray" onclick="closeLogAdd()">Abbrechen</button>
-      <button class="btn btn-red" onclick="saveLog()">Speichern</button>
+      <button class="btn btn-red" id="logSaveBtn" onclick="saveLog()">Speichern</button>
     </div>
   </div>
 </div>
@@ -279,6 +283,7 @@ header{background:#141414;border-bottom:1px solid #2a2a2a;padding:14px 20px;disp
     <div class="mbody">
       <button class="log-back" onclick="closeLogView();openDetail(detailId)">← Zurück zum Projekt</button>
       <div id="logViewDate" style="font-size:11px;color:#666;margin-bottom:14px"></div>
+      <div id="logViewFile" style="margin-bottom:14px"></div>
       <div class="md-view" id="logViewBody"></div>
     </div>
     <div class="mfoot">
@@ -300,6 +305,28 @@ var formTags = [];
 var selFuer  = [];
 var selZiel  = [];
 var selVtb   = [];
+
+/* ── SUPABASE (Projekt-Logs / Strategiepapiere) ───────────────────────── */
+var SB_URL    = 'https://ysqzdqazcgyuzdorauiq.supabase.co';
+var SB_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlzcXpkcWF6Y2d5dXpkb3JhdWlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5ODM0NzcsImV4cCI6MjA5NTU1OTQ3N30.u5cbSVniUl5Zvlf2rdpnjtvDyKvv9csmPwvdtnEwWzE';
+var SB_BUCKET = 'projekt-strategie';
+
+function sbHeaders(extra) {
+  var h = {'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY};
+  if (extra) for (var k in extra) h[k] = extra[k];
+  return h;
+}
+function slugify(s) {
+  return (s||'').toLowerCase()
+    .replace(/[äöüß]/g,function(c){return {'ä':'ae','ö':'oe','ü':'ue','ß':'ss'}[c];})
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'projekt';
+}
+function fmtBytes(n) {
+  if (!n) return '';
+  if (n<1024) return n+' B';
+  if (n<1024*1024) return Math.round(n/1024)+' KB';
+  return (n/1024/1024).toFixed(1)+' MB';
+}
 
 /* ── STAMMDATEN ─────────────────────────────────────────────────────── */
 var defaultStamm = {
@@ -533,9 +560,9 @@ function addTag(e) {
   if(v&&formTags.indexOf(v)<0){formTags.push(v);renderTags();}
   e.target.value='';
 }
-function removeTag(t) { formTags=formTags.filter(function(x){return x!==t;}); renderTags(); }
+function removeTag(i) { formTags.splice(i,1); renderTags(); }
 function renderTags() {
-  var h=''; for(var i=0;i<formTags.length;i++) h+='<span class="tag">'+formTags[i]+'<span class="tag-x" onclick="removeTag(\''+formTags[i]+'\')">×</span></span>';
+  var h=''; for(var i=0;i<formTags.length;i++) h+='<span class="tag">'+escHtml(formTags[i])+'<span class="tag-x" onclick="removeTag('+i+')">×</span></span>';
   document.getElementById('fTagList').innerHTML=h;
 }
 function saveForm() {
@@ -565,7 +592,7 @@ function saveForm() {
     }
     toast('Gespeichert ✓','ok');
   } else {
-    data.id=mkid(); data.requirements=[]; data.changelog=[]; data.logs=[];
+    data.id=mkid(); data.requirements=[]; data.changelog=[];
     var cv=document.getElementById('fCreated').value;
     data.created=cv?new Date(cv).toISOString():new Date().toISOString();
     projects.unshift(data);
@@ -598,12 +625,6 @@ function openDetail(id) {
   var clRows='';
   for(var i=cl.length-1;i>=0;i--) clRows+='<div class="cl-entry"><span class="cl-d">'+cl[i].date+'</span><span class="cl-t">'+cl[i].text+'</span></div>';
   if(!clRows) clRows='<p style="font-size:12px;color:#666">Noch kein Eintrag.</p>';
-  var log=p.logs||[];
-  var logRows='';
-  for(var i=log.length-1;i>=0;i--){
-    logRows+='<div class="log-entry" onclick="openLogView('+i+')"><div class="log-meta"><div class="log-title">'+escHtml(log[i].title||'Ohne Titel')+'</div><div class="log-date">'+(log[i].date||'')+'</div></div><span class="log-arrow">›</span></div>';
-  }
-  if(!logRows) logRows='<p style="font-size:12px;color:#666">Noch keine Logs hinterlegt.</p>';
   var links='';
   if(p.url)  links+='<a class="card-link" href="'+p.url+'" target="_blank">↗ Live öffnen</a> ';
   if(p.repo) links+='<a class="card-link muted" href="'+p.repo+'" target="_blank">⌥ Repo</a>';
@@ -633,14 +654,18 @@ function openDetail(id) {
       clRows+
       '<div class="add-row"><input id="newCl" type="text" placeholder="Neuer Eintrag…" onkeydown="if(event.key===\'Enter\')addCl()"><button class="btn-sm" onclick="addCl()">+</button></div>'+
     '</div>'+
-    '<div class="dsec"><h3>Projekt-Logs ('+log.length+')</h3>'+
-      logRows+
-      '<button class="btn-sm" style="margin-top:8px;width:100%" onclick="openLogAdd()">+ Log hinzufügen</button>'+
+    '<div class="dsec"><h3>Strategiepapiere / Projekt-Logs <span id="logsCount" style="color:#666;font-weight:400"></span></h3>'+
+      '<div id="logsSection"><p style="font-size:12px;color:#666">Lade…</p></div>'+
+      '<button class="btn-sm" style="margin-top:8px;width:100%" onclick="openLogAdd()">+ Log / Datei hinzufügen</button>'+
     '</div>';
   document.getElementById('ovDetail').classList.add('open');
+  loadLogsForDetail(p.name);
 }
-/* ── LOGS ───────────────────────────────────────────────────────────── */
+function getProjectById(id){ for(var i=0;i<projects.length;i++) if(projects[i].id===id) return projects[i]; return null; }
+
+/* ── LOGS (Supabase: Tabelle dashboard_logs + Bucket projekt-strategie) ─ */
 var logViewIdx = null;
+var currentLogs = [];
 function escHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function mdToHtml(md){
   var lines=(md||'').replace(/\r\n/g,'\n').split('\n');
@@ -671,45 +696,147 @@ function mdToHtml(md){
   flushPara(); if(inList) html+='</ul>';
   return html || '<p style="color:#666">Kein Inhalt.</p>';
 }
+function loadLogsForDetail(projectName){
+  var box=document.getElementById('logsSection');
+  if(box) box.innerHTML='<p style="font-size:12px;color:#666">Lade…</p>';
+  fetch(SB_URL+'/rest/v1/dashboard_logs?project_key=eq.'+encodeURIComponent(projectName)+'&select=*&order=log_date.desc,created_at.desc', {headers: sbHeaders()})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(data){ currentLogs=data||[]; renderLogsSection(); })
+    .catch(function(e){
+      console.error(e);
+      var b=document.getElementById('logsSection');
+      if(b) b.innerHTML='<p style="font-size:12px;color:#c0392b">Logs konnten nicht geladen werden (offline?). <span style="text-decoration:underline;cursor:pointer" onclick="retryLoadLogs()">Erneut versuchen</span></p>';
+    });
+}
+function retryLoadLogs(){ var p=getProjectById(detailId); if(p) loadLogsForDetail(p.name); }
+function renderLogsSection(){
+  var box=document.getElementById('logsSection'), cnt=document.getElementById('logsCount');
+  if(!box) return;
+  if(cnt) cnt.textContent='('+currentLogs.length+')';
+  var h='';
+  for(var i=0;i<currentLogs.length;i++){
+    var e=currentLogs[i];
+    var fileBadge=e.file_path?' 📎':'';
+    h+='<div class="log-entry" onclick="openLogView('+i+')"><div class="log-meta"><div class="log-title">'+escHtml(e.title||'Ohne Titel')+fileBadge+'</div><div class="log-date">'+(e.log_date||'')+'</div></div><span class="log-arrow">›</span></div>';
+  }
+  if(!h) h='<p style="font-size:12px;color:#666">Noch keine Logs hinterlegt.</p>';
+  box.innerHTML=h;
+}
+function onLogFileChange(){
+  var f=document.getElementById('logFile').files[0];
+  var info=document.getElementById('logFileInfo');
+  if(!f){ info.textContent=''; return; }
+  if(f.size>26214400){ info.style.color='#c0392b'; info.textContent='⚠ Datei zu groß (max. 25 MB)'; return; }
+  info.style.color='#666';
+  info.textContent='📎 '+f.name+' ('+fmtBytes(f.size)+')';
+}
 function openLogAdd(){
   document.getElementById('logTitle').value='';
   document.getElementById('logDate').value=new Date().toISOString().slice(0,10);
   document.getElementById('logContent').value='';
+  document.getElementById('logFile').value='';
+  document.getElementById('logFileInfo').textContent='';
+  var btn=document.getElementById('logSaveBtn'); btn.disabled=false; btn.textContent='Speichern';
   document.getElementById('ovLogAdd').classList.add('open');
 }
 function closeLogAdd(){ document.getElementById('ovLogAdd').classList.remove('open'); }
 function saveLog(){
+  var p=getProjectById(detailId); if(!p) return;
   var title=document.getElementById('logTitle').value.trim();
-  var content=document.getElementById('logContent').value;
-  if(!content.trim()){ toast('Inhalt ist erforderlich.','err'); return; }
+  var summary=document.getElementById('logContent').value;
   var dv=document.getElementById('logDate').value;
-  var entry={title:title||'Ohne Titel', date:dv||new Date().toISOString().slice(0,10), content:content};
-  for(var i=0;i<projects.length;i++) if(projects[i].id===detailId){
-    if(!projects[i].logs) projects[i].logs=[];
-    projects[i].logs.push(entry);
-    break;
+  var fileInput=document.getElementById('logFile');
+  var file=(fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+  if(!summary.trim() && !file){ toast('Bitte Zusammenfassung oder Datei angeben.','err'); return; }
+  if(file && file.size>26214400){ toast('Datei zu groß (max. 25 MB).','err'); return; }
+  var btn=document.getElementById('logSaveBtn'); btn.disabled=true; btn.textContent='Speichert…';
+  var payload={
+    project_key:p.name,
+    title:title||'Ohne Titel',
+    summary:summary||'',
+    log_date:dv||new Date().toISOString().slice(0,10)
+  };
+  function resetBtn(){ btn.disabled=false; btn.textContent='Speichern'; }
+  function insertRow(){
+    fetch(SB_URL+'/rest/v1/dashboard_logs', {
+      method:'POST',
+      headers: sbHeaders({'Content-Type':'application/json','Prefer':'return=representation'}),
+      body: JSON.stringify(payload)
+    }).then(function(r){
+      if(!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      return r.json();
+    }).then(function(){
+      resetBtn(); closeLogAdd(); toast('Log gespeichert ✓','ok'); loadLogsForDetail(p.name);
+    }).catch(function(e){
+      console.error(e); resetBtn(); toast('Fehler beim Speichern. Bitte erneut versuchen.','err');
+    });
   }
-  save(); closeLogAdd(); openDetail(detailId); toast('Log gespeichert ✓','ok');
+  if(file){
+    var extMatch=file.name.match(/\.[a-zA-Z0-9]+$/);
+    var ext=extMatch?extMatch[0]:'';
+    var base=file.name.slice(0,file.name.length-ext.length);
+    var path=slugify(p.name)+'/'+Date.now()+'_'+slugify(base)+ext;
+    fetch(SB_URL+'/storage/v1/object/'+SB_BUCKET+'/'+path, {
+      method:'POST',
+      headers: sbHeaders({'Content-Type': file.type || 'application/octet-stream'}),
+      body: file
+    }).then(function(r){
+      if(!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      payload.file_path=path; payload.file_name=file.name; payload.file_type=file.type||''; payload.file_size=file.size;
+      insertRow();
+    }).catch(function(e){
+      console.error(e); resetBtn(); toast('Datei-Upload fehlgeschlagen.','err');
+    });
+  } else {
+    insertRow();
+  }
 }
 function openLogView(i){
-  var p=null; for(var k=0;k<projects.length;k++) if(projects[k].id===detailId){p=projects[k];break;}
-  if(!p||!p.logs||!p.logs[i]) return;
+  if(!currentLogs[i]) return;
   logViewIdx=i;
-  var entry=p.logs[i];
+  var entry=currentLogs[i];
   document.getElementById('logViewTitle').textContent=entry.title||'Ohne Titel';
-  document.getElementById('logViewDate').textContent='🗓 '+(entry.date||'');
-  document.getElementById('logViewBody').innerHTML=mdToHtml(entry.content);
+  document.getElementById('logViewDate').textContent='🗓 '+(entry.log_date||'');
+  document.getElementById('logViewBody').innerHTML=mdToHtml(entry.summary);
+  var fileBox=document.getElementById('logViewFile');
+  fileBox.innerHTML = entry.file_path
+    ? '<button class="btn-sm" onclick="openLogFile()">📎 '+escHtml(entry.file_name||'Datei')+' ('+fmtBytes(entry.file_size)+') öffnen</button>'
+    : '';
   closeDetail();
   document.getElementById('ovLogView').classList.add('open');
 }
+function openLogFile(){
+  if(logViewIdx===null || !currentLogs[logViewIdx] || !currentLogs[logViewIdx].file_path) return;
+  var path=currentLogs[logViewIdx].file_path;
+  fetch(SB_URL+'/storage/v1/object/sign/'+SB_BUCKET+'/'+path, {
+    method:'POST',
+    headers: sbHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify({expiresIn:3600})
+  }).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+  .then(function(data){
+    var signed=data.signedURL||data.signedUrl;
+    if(!signed) throw new Error('no url');
+    window.open(SB_URL+'/storage/v1'+signed,'_blank');
+  }).catch(function(e){ console.error(e); toast('Datei konnte nicht geöffnet werden.','err'); });
+}
 function closeLogView(){ document.getElementById('ovLogView').classList.remove('open'); logViewIdx=null; }
 function delLog(){
-  if(logViewIdx===null) return;
+  if(logViewIdx===null || !currentLogs[logViewIdx]) return;
+  var entry=currentLogs[logViewIdx];
   if(!confirm('Log-Eintrag wirklich löschen?')) return;
-  for(var i=0;i<projects.length;i++) if(projects[i].id===detailId){
-    projects[i].logs.splice(logViewIdx,1); break;
-  }
-  save(); closeLogView(); render(); toast('Log gelöscht.','err');
+  fetch(SB_URL+'/rest/v1/dashboard_logs?id=eq.'+entry.id, {method:'DELETE', headers: sbHeaders()})
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      if(entry.file_path){
+        fetch(SB_URL+'/storage/v1/object/'+SB_BUCKET, {
+          method:'DELETE',
+          headers: sbHeaders({'Content-Type':'application/json'}),
+          body: JSON.stringify({prefixes:[entry.file_path]})
+        });
+      }
+      closeLogView(); toast('Log gelöscht.','err');
+      if(getProjectById(detailId)) openDetail(detailId);
+    }).catch(function(e){ console.error(e); toast('Löschen fehlgeschlagen.','err'); });
 }
 
 function closeDetail() { document.getElementById('ovDetail').classList.remove('open'); }

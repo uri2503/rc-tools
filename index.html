@@ -497,7 +497,7 @@ function cardHTML(p) {
       '<div class="foot-btns">'+
         '<button class="btn-sm" onclick="openDetail(\''+p.id+'\')">Details</button>'+
         '<button class="btn-sm" onclick="openEdit(\''+p.id+'\')">✏</button>'+
-        (p.repo ? '<button class="btn-sm" style="color:#c0392b;border-color:#4a1a16" onclick="deployProject(\''+p.id+'\')">▲ Deploy</button>' : '')+
+        (p.repo ? '<a class="btn-sm" style="color:#c0392b;border-color:#4a1a16;text-decoration:none" href="'+deployUrl(p)+'" target="_blank" rel="noopener">▲ Deploy</a>' : '')+
       '</div>'+
     '</div>'+
   '</div>';
@@ -602,14 +602,11 @@ function saveForm() {
 }
 
 /* ── DEPLOY ─────────────────────────────────────────────────────────── */
-function deployProject(id) {
-  var p=null; for(var i=0;i<projects.length;i++) if(projects[i].id===id){p=projects[i];break;}
-  if(!p||!p.repo) return;
-  // Extract repo name from GitHub URL
+function deployUrl(p) {
+  if (!p || !p.repo) return '#';
   var parts = p.repo.replace(/\/+$/,'').split('/');
   var repoName = parts[parts.length-1];
-  var url = 'https://uri2503.github.io/rc-tools/?repo=' + encodeURIComponent(repoName) + '&name=' + encodeURIComponent(p.name);
-  window.open(url, '_blank');
+  return 'https://uri2503.github.io/rc-tools/?repo=' + encodeURIComponent(repoName) + '&name=' + encodeURIComponent(p.name);
 }
 
 /* ── DETAIL ─────────────────────────────────────────────────────────── */

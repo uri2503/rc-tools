@@ -90,9 +90,8 @@
 
   /* NEU: Checkbox */
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer; user-select: none; }
-  .checkbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--red); cursor: pointer; flex-shrink: 0; }
-  .checkbox-row span { font-size: 11px; color: var(--muted); }
-  #targetfile[readonly] { opacity: 0.5; cursor: default; }
+  .checkbox-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--red); cursor: pointer; flex-shrink: 0; }
+  .checkbox-row span { font-size: 11px; color: var(--muted); line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -142,10 +141,10 @@
     <div class="field">
       <label>Ziel-Dateiname auf GitHub</label>
       <input type="text" id="targetfile" placeholder="index.html" value="index.html" />
-      <div class="checkbox-row" onclick="document.getElementById('autoname').click()">
-        <input type="checkbox" id="autoname" checked onchange="toggleAutoname()" onclick="event.stopPropagation()" />
+      <label class="checkbox-row">
+        <input type="checkbox" id="autoname" checked onchange="toggleAutoname()" />
         <span id="autoname-label">Dateiname automatisch vom Upload übernehmen</span>
-      </div>
+      </label>
     </div>
 
     <div class="field">
@@ -217,10 +216,8 @@ window.onload = function() {
     document.getElementById('dashBanner').classList.add('visible');
   }
 
-  // Zieldateiname initial visuell ausgegraut aber readonly
-  var tf = document.getElementById('targetfile');
-  tf.readOnly = true;
-  tf.style.opacity = '0.5';
+  // Zieldateiname initial deaktivieren
+  document.getElementById('targetfile').disabled = true;
 
   if (t && u) loadRepos();
   document.getElementById('token').addEventListener('blur', loadRepos);
@@ -232,16 +229,13 @@ function toggleAutoname() {
   var tf = document.getElementById('targetfile');
   var lb = document.getElementById('autoname-label');
   if (cb.checked) {
-    tf.readOnly = true;
-    tf.style.opacity = '0.5';
+    tf.disabled = true;
     lb.textContent = 'Dateiname automatisch vom Upload übernehmen';
     if (fileName) tf.value = fileName;
   } else {
-    tf.readOnly = false;
-    tf.style.opacity = '1';
+    tf.disabled = false;
     lb.textContent = 'Manuell umbenennen — Zieldateiname oben bearbeiten';
     tf.focus();
-    tf.select();
   }
 }
 
@@ -276,8 +270,6 @@ function fileSelected(input) {
   if (cb && cb.checked) {
     document.getElementById('targetfile').value = fileName;
   }
-  // Upload-Feld zurücksetzen für nächste Datei
-  
   var reader = new FileReader();
   reader.onload = function(e) {
     fileContent = e.target.result;

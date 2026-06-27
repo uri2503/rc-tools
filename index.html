@@ -92,7 +92,7 @@
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer; user-select: none; }
   .checkbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--red); cursor: pointer; flex-shrink: 0; }
   .checkbox-row span { font-size: 11px; color: var(--muted); }
-  #targetfile:disabled { opacity: 0.4; }
+  #targetfile[readonly] { opacity: 0.5; cursor: default; }
 </style>
 </head>
 <body>
@@ -142,10 +142,10 @@
     <div class="field">
       <label>Ziel-Dateiname auf GitHub</label>
       <input type="text" id="targetfile" placeholder="index.html" value="index.html" />
-      <label class="checkbox-row">
-        <input type="checkbox" id="autoname" checked onchange="toggleAutoname()" />
+      <div class="checkbox-row" onclick="document.getElementById('autoname').click()">
+        <input type="checkbox" id="autoname" checked onchange="toggleAutoname()" onclick="event.stopPropagation()" />
         <span id="autoname-label">Dateiname automatisch vom Upload übernehmen</span>
-      </label>
+      </div>
     </div>
 
     <div class="field">
@@ -217,8 +217,10 @@ window.onload = function() {
     document.getElementById('dashBanner').classList.add('visible');
   }
 
-  // Zieldateiname initial deaktivieren
-  document.getElementById('targetfile').disabled = true;
+  // Zieldateiname initial visuell ausgegraut aber readonly
+  var tf = document.getElementById('targetfile');
+  tf.readOnly = true;
+  tf.style.opacity = '0.5';
 
   if (t && u) loadRepos();
   document.getElementById('token').addEventListener('blur', loadRepos);
@@ -230,13 +232,16 @@ function toggleAutoname() {
   var tf = document.getElementById('targetfile');
   var lb = document.getElementById('autoname-label');
   if (cb.checked) {
-    tf.disabled = true;
+    tf.readOnly = true;
+    tf.style.opacity = '0.5';
     lb.textContent = 'Dateiname automatisch vom Upload übernehmen';
     if (fileName) tf.value = fileName;
   } else {
-    tf.disabled = false;
+    tf.readOnly = false;
+    tf.style.opacity = '1';
     lb.textContent = 'Manuell umbenennen — Zieldateiname oben bearbeiten';
     tf.focus();
+    tf.select();
   }
 }
 
@@ -271,6 +276,8 @@ function fileSelected(input) {
   if (cb && cb.checked) {
     document.getElementById('targetfile').value = fileName;
   }
+  // Upload-Feld zurücksetzen für nächste Datei
+  
   var reader = new FileReader();
   reader.onload = function(e) {
     fileContent = e.target.result;

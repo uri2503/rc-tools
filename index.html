@@ -73,7 +73,6 @@
   .success-url { font-size: 12px; color: var(--muted); }
   .success-url a { color: var(--gold); text-decoration: none; }
 
-  /* Dashboard Banner */
   .dash-banner { background:#0d1f0d; border:1px solid #2a5a2a; border-left:3px solid var(--green); border-radius:6px; padding:12px 14px; margin-bottom:16px; display:none; }
   .dash-banner.visible { display:flex; align-items:center; gap:10px; }
   .dash-banner-icon { font-size:18px; flex-shrink:0; }
@@ -83,15 +82,17 @@
   .dash-back:hover { color:var(--green); }
 
   .saved-repos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  .repo-chip {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 3px; padding: 3px 8px; font-size: 11px;
-    cursor: pointer; transition: border-color 0.2s; color: var(--muted);
-  }
+  .repo-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 3px 8px; font-size: 11px; cursor: pointer; transition: border-color 0.2s; color: var(--muted); }
   .repo-chip:hover { border-color: var(--red); color: var(--text); }
   .repo-chip.active { border-color: var(--green); color: var(--green); }
 
   .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+  /* NEU: Checkbox */
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer; user-select: none; }
+  .checkbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--red); cursor: pointer; flex-shrink: 0; }
+  .checkbox-row span { font-size: 11px; color: var(--muted); }
+  #targetfile:disabled { opacity: 0.4; }
 </style>
 </head>
 <body>
@@ -106,7 +107,6 @@
 
 <div class="container">
 
-  <!-- Dashboard Banner (sichtbar wenn via URL-Parameter aufgerufen) -->
   <div class="dash-banner" id="dashBanner">
     <div class="dash-banner-icon">🔗</div>
     <div class="dash-banner-text">
@@ -116,7 +116,6 @@
     <a class="dash-back" href="https://uri2503.github.io/rc-dashboard/" target="_blank">← Dashboard</a>
   </div>
 
-  <!-- Token -->
   <div class="card">
     <div class="card-label">GitHub Konfiguration</div>
 
@@ -143,6 +142,10 @@
     <div class="field">
       <label>Ziel-Dateiname auf GitHub</label>
       <input type="text" id="targetfile" placeholder="index.html" value="index.html" />
+      <label class="checkbox-row">
+        <input type="checkbox" id="autoname" checked onchange="toggleAutoname()" />
+        <span id="autoname-label">Dateiname automatisch vom Upload übernehmen</span>
+      </label>
     </div>
 
     <div class="field">
@@ -151,24 +154,21 @@
     </div>
   </div>
 
-  <!-- Datei -->
   <div class="card">
     <div class="card-label">Datei auswählen</div>
     <div class="drop-zone" id="dropZone">
       <input type="file" id="fileInput" onchange="fileSelected(this)" />
       <div class="drop-icon">📄</div>
-      <div class="drop-text">index.html auswählen</div>
+      <div class="drop-text">Datei auswählen</div>
       <div class="drop-filename" id="fileName"></div>
     </div>
     <div class="hint" style="margin-top:8px;">Direkt aus Dateien-App oder Downloads wählen</div>
   </div>
 
-  <!-- Deploy Button -->
   <button class="btn-deploy" id="deployBtn" onclick="deploy()" disabled>
     🚀 Zu GitHub deployen
   </button>
 
-  <!-- Log -->
   <div style="margin-top:16px;">
     <div class="log" id="log"></div>
     <div class="success-box" id="successBox">
@@ -202,29 +202,43 @@ function loadRepos() {
 }
 
 window.onload = function() {
-  // Gespeicherte Werte
   var t = localStorage.getItem('rc_gh_token');
   var u = localStorage.getItem('rc_gh_user');
   if (t) document.getElementById('token').value  = t;
   if (u) document.getElementById('ghuser').value = u;
 
-  // ── URL-Parameter vom RC Dashboard ──────────────────────────────
   var params = new URLSearchParams(window.location.search);
   var pRepo  = params.get('repo');
   var pName  = params.get('name');
   if (pRepo) {
     document.getElementById('repo').value = pRepo;
-    // Banner einblenden
     document.getElementById('bannerName').textContent = pName || pRepo;
     document.getElementById('bannerRepo').textContent = pRepo;
     document.getElementById('dashBanner').classList.add('visible');
   }
-  // ────────────────────────────────────────────────────────────────
+
+  // Zieldateiname initial deaktivieren
+  document.getElementById('targetfile').disabled = true;
 
   if (t && u) loadRepos();
   document.getElementById('token').addEventListener('blur', loadRepos);
   document.getElementById('ghuser').addEventListener('blur', loadRepos);
 };
+
+function toggleAutoname() {
+  var cb = document.getElementById('autoname');
+  var tf = document.getElementById('targetfile');
+  var lb = document.getElementById('autoname-label');
+  if (cb.checked) {
+    tf.disabled = true;
+    lb.textContent = 'Dateiname automatisch vom Upload übernehmen';
+    if (fileName) tf.value = fileName;
+  } else {
+    tf.disabled = false;
+    lb.textContent = 'Manuell umbenennen — Zieldateiname oben bearbeiten';
+    tf.focus();
+  }
+}
 
 function renderRepoChips() {
   var currentRepo = document.getElementById('repo').value.trim();
@@ -232,7 +246,7 @@ function renderRepoChips() {
   el.innerHTML = '';
   knownRepos.forEach(function(r) {
     var active = r === currentRepo ? ' active' : '';
-    el.innerHTML += '<span class="repo-chip' + active + '" onclick="setRepo(\'' + r + '\')">' + r + '</span>';
+    el.innerHTML += '<span class="repo-chip' + active + '" onclick="setRepo('' + r + '')">' + r + '</span>';
   });
 }
 
@@ -250,8 +264,13 @@ function fileSelected(input) {
   var file = input.files[0];
   if (!file) return;
   fileName = file.name;
-  document.getElementById('fileName').textContent = '✓ ' + file.name + ' (' + Math.round(file.size/1024) + ' KB)';
+  document.getElementById('fileName').textContent = '\u2713 ' + file.name + ' (' + Math.round(file.size/1024) + ' KB)';
   document.getElementById('dropZone').classList.add('has-file');
+  // Dateiname automatisch übernehmen wenn Checkbox aktiv
+  var cb = document.getElementById('autoname');
+  if (cb && cb.checked) {
+    document.getElementById('targetfile').value = fileName;
+  }
   var reader = new FileReader();
   reader.onload = function(e) {
     fileContent = e.target.result;
@@ -280,14 +299,14 @@ function deploy() {
   if (!token)       { alert('Bitte GitHub Token eingeben.'); return; }
   if (!ghuser)      { alert('Bitte GitHub Username eingeben.'); return; }
   if (!repo)        { alert('Bitte Repository eingeben.'); return; }
-  if (!fileContent) { alert('Bitte zuerst eine Datei auswählen.'); return; }
+  if (!fileContent) { alert('Bitte zuerst eine Datei ausw\u00e4hlen.'); return; }
 
   localStorage.setItem('rc_gh_token', token);
   localStorage.setItem('rc_gh_user', ghuser);
 
   var btn = document.getElementById('deployBtn');
   btn.disabled = true;
-  btn.textContent = '⏳ Deploying…';
+  btn.textContent = '\u23f3 Deploying\u2026';
   document.getElementById('successBox').classList.remove('visible');
 
   var apiUrl = 'https://api.github.com/repos/' + ghuser + '/' + repo + '/contents/' + target;
@@ -297,8 +316,8 @@ function deploy() {
     'Content-Type': 'application/json'
   };
 
-  log('Verbinde mit GitHub API…', 'info');
-  log('Repo: ' + ghuser + '/' + repo + ' → ' + target, 'info');
+  log('Verbinde mit GitHub API\u2026', 'info');
+  log('Repo: ' + ghuser + '/' + repo + ' \u2192 ' + target, 'info');
 
   fetch(apiUrl + '?ref=' + branch, { headers: headers })
   .then(function(r) {
@@ -308,12 +327,12 @@ function deploy() {
   })
   .then(function(existing) {
     var sha = existing ? existing.sha : null;
-    log(sha ? 'Bestehende Datei — wird aktualisiert.' : 'Neue Datei wird erstellt.', 'info');
+    log(sha ? 'Bestehende Datei \u2014 wird aktualisiert.' : 'Neue Datei wird erstellt.', 'info');
     var b64 = btoa(unescape(encodeURIComponent(fileContent)));
     var ts  = new Date().toISOString().substring(0,16).replace('T',' ');
-    var payload = { message: 'Deploy ' + target + ' — ' + ts, content: b64, branch: branch };
+    var payload = { message: 'Deploy ' + target + ' \u2014 ' + ts, content: b64, branch: branch };
     if (sha) payload.sha = sha;
-    log('Lade ' + target + ' hoch…', 'info');
+    log('Lade ' + target + ' hoch\u2026', 'info');
     return fetch(apiUrl, { method: 'PUT', headers: headers, body: JSON.stringify(payload) });
   })
   .then(function(r) {
@@ -322,17 +341,17 @@ function deploy() {
   })
   .then(function(data) {
     var commitUrl = data.commit ? data.commit.html_url : '';
-    log('✅ Deploy erfolgreich!', 'ok');
+    log('\u2705 Deploy erfolgreich!', 'ok');
     if (commitUrl) log('Commit: ' + commitUrl, 'ok');
     var pageUrl = 'https://' + ghuser + '.github.io/' + repo + '/';
-    document.getElementById('successUrl').innerHTML = '🌐 <a href="' + pageUrl + '" target="_blank">' + pageUrl + '</a>';
+    document.getElementById('successUrl').innerHTML = '\ud83c\udf10 <a href="' + pageUrl + '" target="_blank">' + pageUrl + '</a>';
     document.getElementById('successBox').classList.add('visible');
-    btn.textContent = '✅ Deployed!';
-    setTimeout(function() { btn.textContent = '🚀 Zu GitHub deployen'; btn.disabled = false; }, 3000);
+    btn.textContent = '\u2705 Deployed!';
+    setTimeout(function() { btn.textContent = '\ud83d\ude80 Zu GitHub deployen'; btn.disabled = false; }, 3000);
   })
   .catch(function(err) {
-    log('❌ Fehler: ' + err.message, 'err');
-    btn.textContent = '🚀 Zu GitHub deployen';
+    log('\u274c Fehler: ' + err.message, 'err');
+    btn.textContent = '\ud83d\ude80 Zu GitHub deployen';
     btn.disabled = false;
   });
 }
